@@ -130,7 +130,7 @@ def series_to_json(ts, target_col, prediction_length = 0, cat = None):
                 'dynamic_feat' : ts[remain_col].values.transpose().tolist()}
     
     if cat is not None:
-        json_obj['cat'] = str(cat)
+        json_obj['cat'] = cat
         
     return json_obj
 
