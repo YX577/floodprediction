@@ -4,6 +4,9 @@ import pandas as pd
 import zipfile
 import shutil # to delete directory
 import datetime
+import json
+import os # and os for saving
+
 
 
 def unzip_ts_data(data_dir):
@@ -103,7 +106,7 @@ def clean_ts_data(ts, time_delta = datetime.timedelta(hours=1), min_length = 0, 
     
     return ts_s
     
-def series_to_json(ts, target_col, prediction_length = 0):
+def series_to_json(ts, target_col, prediction_length = 0, cat = None):
     '''Returns a dictionary of values in DeepAR, JSON format.
     
        ts: one time series data frame.
@@ -125,6 +128,19 @@ def series_to_json(ts, target_col, prediction_length = 0):
     json_obj = {'start' : ts.index[0].strftime('%Y-%m-%d %H:%M:%S'), 
                 'target' : ts[target_col].values[0:(n-prediction_length)].tolist(),
                 'dynamic_feat' : ts[remain_col].values.transpose().tolist()}
+    
+    if cat is not None:
+        json_obj['cat'] = str(cat)
+        
     return json_obj
 
+# import json for formatting data
 
+def write_json_dataset(time_series, target_col, filename, cat = None): 
+    with open(filename, 'ab') as f:
+        # for each of our times series, there is one JSON line
+        for ts in time_series:
+            json_line = json.dumps(series_to_json(ts, target_col, cat = cat)) + '\n'
+            json_line = json_line.encode('utf-8')
+            f.write(json_line)
+    print(filename + ' saved.')
