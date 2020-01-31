@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import zipfile
 import shutil # to delete directory
+import datetime
 
 
 def unzip_ts_data(data_dir):
@@ -46,7 +47,7 @@ def unzip_ts_data(data_dir):
 
 
 
-def read_ts_data(file_path, skiprows = 3, skipfooter = 2, time_col = "Date and time", value_cols = ["Mean"], prefix = "", freq='H'):
+def read_ts_data(file_path, skiprows = 3, skipfooter = 2, time_col = "Date and time", value_cols = ["Mean"], prefix = "", freq='H', quality_col = "Quality", accepted_quality = [9,10]):
     '''
     Read the time series csv data and return a pandas data frame with two variables Time and Value
     file_path: csv file path
@@ -55,6 +56,8 @@ def read_ts_data(file_path, skiprows = 3, skipfooter = 2, time_col = "Date and t
     skipfooter: number of bottom rows to skip
     time_col: name of the timestamp column
     value_cols: name of the target value column
+    quality_col: name of the Quality column
+    accepted_quality: Accepted quality values.
     '''
     
     # Read csv and remove bottom two rows
@@ -62,32 +65,63 @@ def read_ts_data(file_path, skiprows = 3, skipfooter = 2, time_col = "Date and t
                               parse_dates={'DateTime' : [time_col]}, infer_datetime_format=True,
                               index_col='DateTime', engine = 'python')
     
-    ts_data_raw.index = pd.date_range(ts_data_raw.index[0], periods = ts_data_raw.shape[0], freq = freq)
+    # Remove 
+#     ts_data_raw.index = pd.date_range(ts_data_raw.index[0], periods = ts_data_raw.shape[0], freq = freq)
+    
+    # Remove rows with un acceptable quality
+    ts_data_raw = ts_data_raw[ts_data_raw[quality_col].isin(accepted_quality)]
     
     # Select appropriate columns and rename them
     ts_data = ts_data_raw[value_cols]
+    
+#     ts_data = ts_data[ts_data[quality_col] in accepted_quality]
     ts_data.rename( dict( zip( value_cols, [prefix+x for x in value_cols]) ), axis = 1, inplace=True )
     
     return ts_data
     
+def clean_ts_data(ts, time_delta = datetime.timedelta(hours=1), min_length = 0, min_rain = 10):
+    '''
+    Breaks the time series into a list of time series when ever there is a break of more than 
+    specified difference (time_delta) in the index.
+    It will discard time series of length less than min_length
+    ts : dataframe with index as datetime
+    time_delta : max time delta. 
+    min_length : minimum length of the time series to keep
+    min_rain : minimum flow data to include
+    '''
+    clean_ts = ts.dropna()
+    series_ids = np.cumsum(np.where(np.diff(clean_ts.index.to_pydatetime()) > time_delta, 1, 0))
+
+    unique_series_ids = np.unique(series_ids)
+    
+    ts_s = []
+
+    for series_id in unique_series_ids:
+        selec_ts = clean_ts.iloc[series_ids == series_id]
+        if selec_ts.shape[0] > min_length and  max(selec_ts.iloc[:,1]) >= min_rain:
+            ts_s.append(selec_ts)
+    
+    return ts_s
     
 def series_to_json(ts, target_col, prediction_length = 0):
     '''Returns a dictionary of values in DeepAR, JSON format.
     
-       ts: A single time series.
+       ts: one time series data frame.
        target_col: col name for target series (other series will be used as dynamic feature)
        prediction_length: if prediction_length is given, then this number of target variable is removed from the end
        
        return: A dictionary of values with "start", "target" and dynamic feature as the rest of the columns
        '''
     # your code here
+    
+    
     remain_col = []
     for col in ts.columns.values:
         if col!= target_col:
             remain_col.append(col)
-    
+
     n = ts.shape[0]
-    
+
     json_obj = {'start' : ts.index[0].strftime('%Y-%m-%d %H:%M:%S'), 
                 'target' : ts[target_col].values[0:(n-prediction_length)].tolist(),
                 'dynamic_feat' : ts[remain_col].values.transpose().tolist()}
